@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Filter, Users, Building, FileText, ExternalLink, Github, MapPin, Calendar, Star } from 'lucide-react';
 import axios from 'axios';
 
@@ -34,6 +34,8 @@ const SearchPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
   const searchTypes = [
     { id: 'engineers', name: 'People', icon: Users },
@@ -41,36 +43,55 @@ const SearchPage: React.FC = () => {
     { id: 'papers', name: 'Research Papers', icon: FileText }
   ];
 
-  const performSearch = async () => {
-    if (!searchQuery.trim()) return;
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
 
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const performSearch = useCallback(async () => {
+    if (!debouncedQuery.trim()) return;
+
+    console.log('Performing search with:', { debouncedQuery, searchType, currentPage });
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
-        query: searchQuery,
+        query: debouncedQuery,
         type: searchType,
         limit: '10',
         offset: ((currentPage - 1) * 10).toString()
       });
 
+      console.log('Making API request to:', `/api/search?${params}`);
       const response = await axios.get<SearchResponse>(`/api/search?${params}`);
       
+      console.log('Search response:', response.data);
       setResults(response.data.results);
       setTotal(response.data.total);
     } catch (error) {
       console.error('Search error:', error);
+      setError('Failed to perform search. Please try again.');
       setResults([]);
       setTotal(0);
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedQuery, searchType, currentPage]);
 
   useEffect(() => {
-    if (searchQuery.trim()) {
+    console.log('useEffect triggered with debouncedQuery:', debouncedQuery);
+    if (debouncedQuery.trim()) {
       performSearch();
+    } else {
+      setResults([]);
+      setTotal(0);
+      setError(null);
     }
-  }, [searchQuery, searchType, currentPage]);
+  }, [performSearch]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +100,25 @@ const SearchPage: React.FC = () => {
   };
 
   const totalPages = Math.ceil(total / 10);
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Something went wrong</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="btn-primary"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
